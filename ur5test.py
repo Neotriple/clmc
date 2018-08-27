@@ -25,17 +25,16 @@ qSphere = [0.5, .1, .2, 1.0, 0, 0, 0]
 robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
 robot.viewer.gui.refresh()
 
-q2 = np.matrix('1; 1; 1; 1; 1; 1')
+qSphere = np.asmatrix(qSphere[:3])
+qSphere = qSphere.T
 
+#integrate
 for i in range(1000):
-	error = robot.data.oMi[6].translation - qSphere[:3]
+	error = qSphere - robot.data.oMi[6].translation
+	error = np.concatenate((error,np.matrix('0, 0, 0').T))
+	#change q for every time step
 	Jinv = np.linalg.pinv(robot.computeJacobians(q))
 	qdot = Jinv*error
 	robot.increment(q, qdot*.001)
 	robot.display(q)
 
-#print(placement)
-
-#placement = robot.data.oMi[idx].copy()
-
-#print(placement)
