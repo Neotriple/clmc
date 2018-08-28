@@ -90,9 +90,16 @@ if __name__ == "__main__":
         grad_eval_f = grad(eval_f)
         return grad_eval_f(x)
         
+    def eval_g2(tau, user_data= None):
+        assert len(tau) == robot.nv*timeSteps
+
+        C_tau = np.identity(robot.nv*timeSteps)
+
+        constraints = C_tau*tau
+        return constraints
 
     nnzj = 8  
-    def eval_autojac_g(x, flag, user_data = None):
+    def eval_autojac_g(tau, flag, user_data = None):
         if flag:
             return (array([0, 0, 0, 0, 1, 1, 1, 1]), 
                 array([0, 1, 2, 3, 0, 1, 2, 3]))
