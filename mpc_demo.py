@@ -58,32 +58,38 @@ if __name__ == "__main__":
 
     #When starting off from 0 initial position & 0 initial velocity
     q0 = zero(robot.nq)
-    qv0 = zero(robot.nv)
+    vq0 = zero(robot.nv)
     aq0 = zero(robot.nv)
-    
+
     def eval_f(tau, user_data = None):
         assert len(tau) == robot.nv*timeSteps
 
+        tempRobot = robot
         vectorNorm = np.linalg.norm(tau)
-
+        q = q0
+        vq = vq0
+        aq = aq0
         t = 0
+        qNorm = np.empty([timeSteps, 1, robot.nq, 1])
         while t < timeSteps:
-            robot.
+            tau_k = tau[t*timeSteps:(t*timeSteps)+robot.nv]
+            b_k = se3.rnea(tempRobot.model, tempRobot.data, q, vq, aq)
+            M_k = se3.crba(tempRobot.model, tempRobot.data, q)
+            aq = np.linalg.inv(M_k)*(tau_k - b_k)
+            vq += dt*aq
+            q = se3.integrate(robot.model, q, vq*dt)
+            qNorm[t, 0] = q
+            t += 1
 
-        return x[0] * x[3] * (x[0] + x[1] + x[2]) + x[2]
+        qNorm = np.linalg.norm(q_ref - qNorm)
+
+        return vectorNorm + qNorm
 
 
     def eval_autograd_f(x):
         grad_eval_f = grad(eval_f)
         return grad_eval_f(x)
         
-
-    def eval_g2(x, user_data= None):
-        assert len(x) == 4
-        return np.array([
-            x[0] * x[1] * x[2] * x[3], 
-            x[0]*x[0] + x[1]*x[1] + x[2]*x[2] + x[3]*x[3]
-        ], float_)
 
     nnzj = 8  
     def eval_autojac_g(x, flag, user_data = None):
