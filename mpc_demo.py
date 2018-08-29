@@ -2,58 +2,52 @@ import matplotlib
 import matplotlib.pyplot as plt
 import seaborn as sbn # For nice looking plots.
 import numpy as np
-from pinocchio.utils import zero
 import autograd.numpy as agnp
 from autograd import grad
 from autograd import jacobian
+from os.path import join
+from pinocchio.utils import *
+from pinocchio.robot_wrapper import RobotWrapper
 
 import pyipopt
 
-from py_teststand_contact_learning.robot import build_teststand_robot
-from py_teststand_contact_learning.dynamics import TeststandDynamics, ForceRecorderDynamics, plot_traj
 
 np.set_printoptions(precision=2, suppress=True, linewidth=140)
-
-class LearnedContact(object):
-    def reset_contact(self, p):
-        pass
-
-    def __call__(self, dyn, x, u, dt):
-        obs = dyn.observation(x, u)
-
-        # TODO: Network force prediction goes here.
-        fx, fy, fz = 0., 0., 1.
-
-        return np.reshape([fx, fy, fz, 0., 0., 0.],(6, 1))
-
 
 if __name__ == "__main__":
 
 
-    robot, x = build_teststand_robot()
-    x0 = zero(8)
-    x0[:6] = x
+    PKG = '/opt/openrobots/share'
+    URDF = join(PKG, 'ur_description/urdf/ur5_gripper.urdf')
+    robot = RobotWrapper(URDF, [PKG])
 
-    contact_model = {
-        'type': 'SpringDamper',
-        'parameters': [1e4, 80, 0., False], # Not using a friction cone.
-        'terrain': lambda x, y: 0.,
-    }
+    robot.initDisplay(loadModel=True)
 
-    timeSteps = 3
-    dt = 0.001
+    q = zero(robot.nq)
 
+    se3.forwardKinematics(robot.model, robot.data, q)
+
+    visualObj = robot.visual_model.geometryObjects[4]
+    visualName = visualObj.name
+    visualRef = robot.getViewerNodeName(visualObj, se3.GeometryType.VISUAL)
+
+    rgbt = [1.0, 1.0, 1.0, 1.0]
+    robot.viewer.gui.addSphere("world/sphere", .1, rgbt)
+    qSphere = [0.5, .1, .2, 1.0, 0, 0, 0]
+    robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
+    robot.viewer.gui.refresh()
 
     #PyIpopt stuff
-
-    nvar = 9
+    timeSteps = 3
+    dt = 0.001
+    nvar = robot.nv*timeSteps
     x_L = ones((nvar), dtype=float_) * 1.0
-    x_U = ones((nvar), dtype=float_) * 5.0
+    x_U = ones((nvar), dtype=float_) * 50.0
 
     ncon = 9
 
-    g_L = array([25.0, 40.0])
-    g_U = array([2.0*pow(10.0, 19), 40.0]) 
+    g_L = array([0.00])
+    g_U = array([50*robot.nv]) 
 
 
     #When starting off from 0 initial position & 0 initial velocity
@@ -93,16 +87,15 @@ if __name__ == "__main__":
     def eval_g2(tau, user_data= None):
         assert len(tau) == robot.nv*timeSteps
 
-        C_tau = np.identity(robot.nv*timeSteps)
+        C_tau = agnp.ones(robot.nv*timeSteps)
 
         constraints = C_tau*tau
         return constraints
 
-    nnzj = 8  
+    nnzj = robot.nv*timeSteps
     def eval_autojac_g(tau, flag, user_data = None):
         if flag:
-            return (array([0, 0, 0, 0, 1, 1, 1, 1]), 
-                array([0, 1, 2, 3, 0, 1, 2, 3]))
+            return (np.linspace(0, robot.nv*timeSteps - 1, robot.nv*timeSteps))
         else:
             jac_g = jacobian(eval_g2)
             return jac_g(x)
@@ -111,22 +104,22 @@ if __name__ == "__main__":
     def apply_new(x):
         print("Here")
         return True
-        
-    nlp = pyipopt.create(nvar, x_L, x_U, ncon, g_L, g_U, nnzj, nnzh, eval_f, eval_grad_f, eval_g, eval_jac_g)
+    
     nlp2 = pyipopt.create(nvar, x_L, x_U, ncon, g_L, g_U, nnzj, nnzh, eval_f, eval_autograd_f, eval_g2, eval_autojac_g)
 
-    x0 = np.array([1.0, 5.0, 5.0, 1.0])
+    x0 = agnp.zeros(nvar)
 
     print "Going to call solve for normal test case:"
     print x0
-    x, zl, zu, constraint_multipliers, obj, status = nlp.solve(x0)
-    nlp.close()
+    traj, zl, zu, constraint_multipliers, obj, status = nlp2.solve(x0)
+    nlp2.close()
 
-    #Dynamics Stuff
-    dyn = TeststandDynamics(robot, contact_model, 100, dt=1e-3)
-    dyn = ForceRecorderDynamics(dyn, 100)
 
-    traj = dyn.integrate_policy(x0.reshape(-1), lambda t, x: np.array([-0.5, 0.5]), 100)
-
+    q = zero(robot.nq)
+    vq = zero.(robot.nv)
+    while t < timeSteps:
+        tau_k = traj[t*timeSteps:(t*timeSteps)+robot.nv]
+        se3.aba(robot.model, robot.data, q, dq, tau_k)
+        robot.display(q)
 
 
