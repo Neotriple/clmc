@@ -37,4 +37,5 @@ for i in range(1000):
 	qdot = Jinv*error
 	robot.increment(q, qdot*.001)
 	robot.display(q)
-
+	if i = 1000
+		print(q)
