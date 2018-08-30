@@ -4,6 +4,7 @@ import pinocchio as se3
 from pinocchio.utils import *
 import numpy as np
 import scipy as sp
+import time
 
 PKG = '/opt/openrobots/share'
 URDF = join(PKG, 'ur_description/urdf/ur5_gripper.urdf')
@@ -29,6 +30,7 @@ qSphere = np.asmatrix(qSphere[:3])
 qSphere = qSphere.T
 
 #integrate
+time.sleep(2.5)
 for i in range(1000):
 	error = qSphere - robot.data.oMi[6].translation
 	error = np.concatenate((error,np.matrix('0, 0, 0').T))
@@ -37,5 +39,7 @@ for i in range(1000):
 	qdot = Jinv*error
 	robot.increment(q, qdot*.001)
 	robot.display(q)
-	if i = 1000
-		print(q)
+	if i == 0:
+		time.sleep(2.5)
+	if i == 1:
+		time.sleep(2.5)

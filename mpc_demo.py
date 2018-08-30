@@ -3,16 +3,15 @@ import matplotlib.pyplot as plt
 import seaborn as sbn # For nice looking plots.
 import numpy as np
 import autograd.numpy as agnp
+import pinocchio as se3
 from autograd import grad
 from autograd import jacobian
 from os.path import join
 from pinocchio.utils import *
 from pinocchio.robot_wrapper import RobotWrapper
+import time
 
 import pyipopt
-
-
-np.set_printoptions(precision=2, suppress=True, linewidth=140)
 
 if __name__ == "__main__":
 
@@ -37,55 +36,98 @@ if __name__ == "__main__":
     robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
     robot.viewer.gui.refresh()
 
+    robot.display(q)
+
     #PyIpopt stuff
     timeSteps = 3
     dt = 0.001
     nvar = robot.nv*timeSteps
-    x_L = ones((nvar), dtype=float_) * 1.0
-    x_U = ones((nvar), dtype=float_) * 50.0
+    x_L = np.ones((nvar), dtype=np.float_) * 1.0
+    x_U = np.ones((nvar), dtype=np.float_) * 50.0
 
-    ncon = 9
+    q_ref1 = np.array([-1.49411011e-02,-1.32003896e+00,2.09324591e+00,-7.73206945e-01,-1.49411010e-02,-2.32376275e-09])
 
-    g_L = array([0.00])
-    g_U = array([50*robot.nv]) 
+    q_ref1 = np.asmatrix(q_ref1).T
 
+    qRef = np.empty([timeSteps, 1, robot.nq, 1])
 
+    temp = 0
+    while (temp < timeSteps):
+        qRef[temp, 0] = q_ref1
+        temp += 1
+
+    ncon = 1
+
+    g_L = np.array([0.01])
+    g_U = np.array([2.0*pow(10.0, 19)])
     #When starting off from 0 initial position & 0 initial velocity
-    q0 = zero(robot.nq)
-    vq0 = zero(robot.nv)
-    aq0 = zero(robot.nv)
+    q0 = np.zeros(robot.nq)
+    vq0 = np.zeros(robot.nv)
+    aq0 = np.zeros(robot.nv)
+
+    q0 = np.asmatrix(q0).T
+    vq0 = np.asmatrix(vq0).T
+    aq0 = np.asmatrix(aq0).T
 
     def eval_f(tau, user_data = None):
-        assert len(tau) == robot.nv*timeSteps
-
+        assert len(tau) == nvar
         tempRobot = robot
-        vectorNorm = np.linalg.norm(tau)
+        vectorNorm = agnp.linalg.norm(tau)
+
+        # tauNorm = 0
+        # for tk in tau:
+        #     tauNorm += tk**2
+
+        # tauNorm = agnp.sqrt(tauNorm)
+
         q = q0
         vq = vq0
         aq = aq0
+        qNorm = agnp.empty([timeSteps, 1, robot.nq, 1])
         t = 0
-        qNorm = np.empty([timeSteps, 1, robot.nq, 1])
-        while t < timeSteps:
+        while (t < timeSteps):
             tau_k = tau[t*timeSteps:(t*timeSteps)+robot.nv]
+            tau_k = np.asmatrix(tau_k).T
             b_k = se3.rnea(tempRobot.model, tempRobot.data, q, vq, aq)
             M_k = se3.crba(tempRobot.model, tempRobot.data, q)
             aq = np.linalg.inv(M_k)*(tau_k - b_k)
             vq += dt*aq
-            q = se3.integrate(robot.model, q, vq*dt)
+            q = se3.integrate(tempRobot.model, q, vq*dt)
             qNorm[t, 0] = q
             t += 1
 
-        qNorm = np.linalg.norm(q_ref - qNorm)
-
+        #qNorm = np.linalg.norm(qRef - qNorm)
+        qNorm = agnp.linalg.norm(qNorm-qRef)
+        #return vectorNorm + qNorm
         return vectorNorm + qNorm
 
 
-    def eval_autograd_f(x):
+    def eval_autograd_f(tau):
         grad_eval_f = grad(eval_f)
-        return grad_eval_f(x)
+        return grad_eval_f(tau)
+
+    def eval_grad_f_finiteDiff(tau):
+
+        grad_f = np.empty([timeSteps*robot.nv])
+        diffStep = dt/10
+
+        i = 0
+        while(i < len(tau)):
+            tauTemp = tau
+            #Calculate Upper Limit
+            tauTemp[i] = tau[i] + diffStep
+            upperLim = eval_f(tauTemp)
+            tauTemp[i] = tau[i] - diffStep
+            bottomLim = eval_f(tauTemp)
+            deriv = (upperLim - bottomLim)/diffStep
+            grad_f[i] = deriv
+            i += 1
+
+        return grad_f
+        
         
     def eval_g2(tau, user_data= None):
-        assert len(tau) == robot.nv*timeSteps
+        assert len(tau) == nvar
 
         C_tau = agnp.ones(robot.nv*timeSteps)
 
@@ -95,17 +137,20 @@ if __name__ == "__main__":
     nnzj = robot.nv*timeSteps
     def eval_autojac_g(tau, flag, user_data = None):
         if flag:
-            return (np.linspace(0, robot.nv*timeSteps - 1, robot.nv*timeSteps))
+            array1 = agnp.zeros(nvar)
+            array2 = agnp.linspace(0, robot.nv*timeSteps - 1, robot.nv*timeSteps)
+            return (array1, array2)
         else:
             jac_g = jacobian(eval_g2)
-            return jac_g(x)
+            return jac_g(tau)
 
 
-    def apply_new(x):
+    def apply_new(tau):
         print("Here")
         return True
-    
-    nlp2 = pyipopt.create(nvar, x_L, x_U, ncon, g_L, g_U, nnzj, nnzh, eval_f, eval_autograd_f, eval_g2, eval_autojac_g)
+    nnzh = 0
+
+    nlp2 = pyipopt.create(nvar, x_L, x_U, ncon, g_L, g_U, nnzj, nnzh, eval_f, eval_grad_f_finiteDiff, eval_g2, eval_autojac_g)
 
     x0 = agnp.zeros(nvar)
 
@@ -115,11 +160,24 @@ if __name__ == "__main__":
     nlp2.close()
 
 
-    q = zero(robot.nq)
-    vq = zero.(robot.nv)
-    while t < timeSteps:
-        tau_k = traj[t*timeSteps:(t*timeSteps)+robot.nv]
-        se3.aba(robot.model, robot.data, q, dq, tau_k)
-        robot.display(q)
+    print
+    #print "Solution of the primal variables, x"
+    #print_variable("x", x2)
+    #print
+    print "Objective value"
+    print "f(x*) =", obj
 
+
+    q = zero(robot.nq)
+    vq = zero(robot.nv)
+    t = 0
+    while (t < timeSteps):
+        tau_k = traj[t*timeSteps:(t*timeSteps)+robot.nv]
+        tau_k = np.asmatrix(tau_k).T
+        aq = se3.aba(robot.model, robot.data, q, vq, tau_k)
+        vq += aq * dt
+        q = se3.integrate(robot.model, q, vq*dt)
+        robot.display(q)
+        t += 1
+        time.sleep(2.5)
 
