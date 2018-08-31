@@ -12,9 +12,12 @@ robot = RobotWrapper(URDF, [PKG])
 
 robot.initDisplay(loadModel=True)
 
-q = zero(robot.nq)
+q = rand(robot.nq)
 
 se3.forwardKinematics(robot.model, robot.data, q)
+
+robot.display(q)
+time.sleep(2.5)
 
 visualObj = robot.visual_model.geometryObjects[4]
 visualName = visualObj.name
@@ -30,7 +33,6 @@ qSphere = np.asmatrix(qSphere[:3])
 qSphere = qSphere.T
 
 #integrate
-time.sleep(2.5)
 for i in range(1000):
 	error = qSphere - robot.data.oMi[6].translation
 	error = np.concatenate((error,np.matrix('0, 0, 0').T))
@@ -40,6 +42,8 @@ for i in range(1000):
 	robot.increment(q, qdot*.001)
 	robot.display(q)
 	if i == 0:
+		print("first timestep")
 		time.sleep(2.5)
 	if i == 1:
+		print("second timestep")
 		time.sleep(2.5)

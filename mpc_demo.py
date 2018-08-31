@@ -22,9 +22,9 @@ if __name__ == "__main__":
 
     robot.initDisplay(loadModel=True)
 
-    q = zero(robot.nq)
+    qInit = rand(robot.nq)
 
-    se3.forwardKinematics(robot.model, robot.data, q)
+    se3.forwardKinematics(robot.model, robot.data, qInit)
 
     visualObj = robot.visual_model.geometryObjects[4]
     visualName = visualObj.name
@@ -36,14 +36,14 @@ if __name__ == "__main__":
     robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
     robot.viewer.gui.refresh()
 
-    robot.display(q)
+    robot.display(qInit)
+    time.sleep(2.5)
 
     #PyIpopt stuff
     timeSteps = 3
     dt = 0.001
     nvar = robot.nv*timeSteps
-    x_L = np.ones((nvar), dtype=np.float_) * 1.0
-    x_U = np.ones((nvar), dtype=np.float_) * 50.0
+    ncon = 1
 
     q_ref1 = np.array([-1.49411011e-02,-1.32003896e+00,2.09324591e+00,-7.73206945e-01,-1.49411010e-02,-2.32376275e-09])
 
@@ -56,37 +56,35 @@ if __name__ == "__main__":
         qRef[temp, 0] = q_ref1
         temp += 1
 
-    ncon = 1
-
+    x_L = np.ones((nvar), dtype=np.float_) * 0.001
+    x_U = np.ones((nvar), dtype=np.float_) * 20
     g_L = np.array([0.01])
     g_U = np.array([2.0*pow(10.0, 19)])
     #When starting off from 0 initial position & 0 initial velocity
-    q0 = np.zeros(robot.nq)
+    q0 = qInit
     vq0 = np.zeros(robot.nv)
     aq0 = np.zeros(robot.nv)
 
-    q0 = np.asmatrix(q0).T
     vq0 = np.asmatrix(vq0).T
     aq0 = np.asmatrix(aq0).T
 
     def eval_f(tau, user_data = None):
         assert len(tau) == nvar
         tempRobot = robot
-        vectorNorm = agnp.linalg.norm(tau)
-
+        #vectorNorm = agnp.linalg.norm(tau)
+        vectorNorm = 0
         # tauNorm = 0
         # for tk in tau:
         #     tauNorm += tk**2
 
         # tauNorm = agnp.sqrt(tauNorm)
-
         q = q0
         vq = vq0
         aq = aq0
         qNorm = agnp.empty([timeSteps, 1, robot.nq, 1])
         t = 0
         while (t < timeSteps):
-            tau_k = tau[t*timeSteps:(t*timeSteps)+robot.nv]
+            tau_k = tau[t*robot.nv:(t*robot.nv)+robot.nv]
             tau_k = np.asmatrix(tau_k).T
             b_k = se3.rnea(tempRobot.model, tempRobot.data, q, vq, aq)
             M_k = se3.crba(tempRobot.model, tempRobot.data, q)
@@ -99,6 +97,7 @@ if __name__ == "__main__":
         #qNorm = np.linalg.norm(qRef - qNorm)
         qNorm = agnp.linalg.norm(qNorm-qRef)
         #return vectorNorm + qNorm
+        print(qNorm)
         return vectorNorm + qNorm
 
 
@@ -109,17 +108,16 @@ if __name__ == "__main__":
     def eval_grad_f_finiteDiff(tau):
 
         grad_f = np.empty([timeSteps*robot.nv])
-        diffStep = dt/10
+        diffStep = dt/100
 
         i = 0
         while(i < len(tau)):
             tauTemp = tau
-            #Calculate Upper Limit
             tauTemp[i] = tau[i] + diffStep
             upperLim = eval_f(tauTemp)
             tauTemp[i] = tau[i] - diffStep
             bottomLim = eval_f(tauTemp)
-            deriv = (upperLim - bottomLim)/diffStep
+            deriv = (upperLim - bottomLim)/(diffStep*2)
             grad_f[i] = deriv
             i += 1
 
@@ -129,10 +127,9 @@ if __name__ == "__main__":
     def eval_g2(tau, user_data= None):
         assert len(tau) == nvar
 
-        C_tau = agnp.ones(robot.nv*timeSteps)
+        constraints = agnp.sum(tau)
 
-        constraints = C_tau*tau
-        return constraints
+        return agnp.array([constraints], np.float_)
 
     nnzj = robot.nv*timeSteps
     def eval_autojac_g(tau, flag, user_data = None):
@@ -142,7 +139,8 @@ if __name__ == "__main__":
             return (array1, array2)
         else:
             jac_g = jacobian(eval_g2)
-            return jac_g(tau)
+            returnedVar = jac_g(tau)
+            return returnedVar
 
 
     def apply_new(tau):
@@ -168,11 +166,11 @@ if __name__ == "__main__":
     print "f(x*) =", obj
 
 
-    q = zero(robot.nq)
+    q = q0
     vq = zero(robot.nv)
     t = 0
     while (t < timeSteps):
-        tau_k = traj[t*timeSteps:(t*timeSteps)+robot.nv]
+        tau_k = traj[t*robot.nv:(t*robot.nv)+robot.nv]
         tau_k = np.asmatrix(tau_k).T
         aq = se3.aba(robot.model, robot.data, q, vq, tau_k)
         vq += aq * dt
