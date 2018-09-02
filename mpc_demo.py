@@ -38,8 +38,8 @@ if __name__ == "__main__":
     robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
     robot.viewer.gui.refresh()
 
-    robot.display(qInit)
-    time.sleep(2.5)
+    #robot.display(qInit)
+    #time.sleep(2.5)
 
     #PyIpopt stuff
     timeSteps = 3
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     g_L = np.array([0.01])
     g_U = np.array([2.0*pow(10.0, 19)])
     #When starting off from 0 initial position & 0 initial velocity
-    q0 = qInit
+    q0 = qInit.copy()
     vq0 = np.zeros(robot.nv)
     aq0 = np.zeros(robot.nv)
 
@@ -81,17 +81,14 @@ if __name__ == "__main__":
         #     tauNorm += tk**2
 
         # tauNorm = agnp.sqrt(tauNorm)
-        q = q0
-        vq = vq0
-        aq = aq0
+        q = q0.copy()
+        vq = vq0.copy()
+        aq = aq0.copy()
         qNorm = agnp.empty([timeSteps, 1, robot.nq, 1])
         t = 0
         while (t < timeSteps):
-            tau_k = tau[t*robot.nv:(t*robot.nv)+robot.nv]
+            tau_k = tau[t*robot.nv:(t*robot.nv)+robot.nv].copy()
             tau_k = np.asmatrix(tau_k).T
-            print
-            print("vq before rnea")
-            print(vq)
             b_k = se3.rnea(tempRobot.model, tempRobot.data, q, vq, aq)
             if (math.isnan(b_k[0])):
                 print
@@ -112,7 +109,7 @@ if __name__ == "__main__":
             aq = np.linalg.inv(M_k)*(tau_k - b_k)
             vq += dt*aq
             q = se3.integrate(tempRobot.model, q, vq*dt)
-            qNorm[t, 0] = q
+            qNorm[t, 0] = q.copy()
             t += 1
 
         #qNorm = np.linalg.norm(qRef - qNorm)
@@ -131,23 +128,13 @@ if __name__ == "__main__":
         diffStep = dt/10
         i = 0
         while(i < len(tau)):
-            print("tau actual")
-            print(tau)
-            print
-            tauTemp = tau
+            tauTemp = tau.copy()
             tauTemp[i] = tau[i] + diffStep
-            print("tau actual again")
-            print(tau)
-            print
-            print("tau_temp")
-            print(tauTemp)
-            print
-            time.sleep(10)
             upperLim = eval_f(tauTemp)
             tauTemp[i] = tau[i] - diffStep
             bottomLim = eval_f(tauTemp)
             deriv = (upperLim - bottomLim)/(diffStep*2)
-            grad_f[i] = deriv
+            grad_f[i] = deriv.copy()
             i += 1
 
         return grad_f
