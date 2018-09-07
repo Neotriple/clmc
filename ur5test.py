@@ -17,7 +17,6 @@ q = rand(robot.nq)
 se3.forwardKinematics(robot.model, robot.data, q)
 
 robot.display(q)
-time.sleep(2.5)
 
 visualObj = robot.visual_model.geometryObjects[4]
 visualName = visualObj.name
@@ -32,8 +31,14 @@ robot.viewer.gui.refresh()
 qSphere = np.asmatrix(qSphere[:3])
 qSphere = qSphere.T
 
+qEnd = [0.35, 0.25, 0.3]
+qEnd = np.asmatrix(qEnd).T
+
+qEnd2 = [0.35, 0.25, 0.0]
+qEnd2 = np.asmatrix(qEnd2).T
+
 #integrate
-for i in range(1000):
+for i in range(5000):
 	error = qSphere - robot.data.oMi[6].translation
 	error = np.concatenate((error,np.matrix('0, 0, 0').T))
 	#change q for every time step
@@ -41,9 +46,39 @@ for i in range(1000):
 	qdot = Jinv*error
 	robot.increment(q, qdot*.001)
 	robot.display(q)
-	if i == 0:
-		print("first timestep")
-		time.sleep(2.5)
-	if i == 1:
-		print("second timestep")
-		time.sleep(2.5)
+
+#integrate with ball in hand
+for i in range(5000):
+	error = qEnd - robot.data.oMi[6].translation
+	error = np.concatenate((error,np.matrix('0, 0, 0').T))
+	#change q for every time step
+	Jinv = np.linalg.pinv(robot.computeJacobians(q))
+	qdot = Jinv*error
+	robot.increment(q, qdot*.001)
+	robot.display(q)
+	q2 = robot.data.oMi[6].translation
+	q2 = np.concatenate((q2,np.matrix('1, 0, 0, 0').T)).T
+	q2 = (np.asarray(q2).reshape(-1)).tolist()
+	robot.viewer.gui.deleteNode("world/sphere", 1)
+	robot.viewer.gui.addSphere("world/sphere", .1, rgbt)
+	robot.viewer.gui.refresh()
+	robot.viewer.gui.applyConfiguration("world/sphere", q2)
+	robot.viewer.gui.refresh()
+
+for i in range(5000):
+	error = qEnd2 - robot.data.oMi[6].translation
+	error = np.concatenate((error,np.matrix('0, 0, 0').T))
+	#change q for every time step
+	Jinv = np.linalg.pinv(robot.computeJacobians(q))
+	qdot = Jinv*error
+	robot.increment(q, qdot*.01)
+	robot.display(q)
+	q2 = robot.data.oMi[6].translation
+	q2 = np.concatenate((q2,np.matrix('1, 0, 0, 0').T)).T
+	q2 = (np.asarray(q2).reshape(-1)).tolist()
+	robot.viewer.gui.deleteNode("world/sphere", 1)
+	robot.viewer.gui.addSphere("world/sphere", .1, rgbt)
+	robot.viewer.gui.refresh()
+	robot.viewer.gui.applyConfiguration("world/sphere", q2)
+	robot.viewer.gui.refresh()
+
