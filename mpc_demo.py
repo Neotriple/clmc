@@ -38,8 +38,7 @@ if __name__ == "__main__":
     robot.viewer.gui.applyConfiguration("world/sphere", qSphere)
     robot.viewer.gui.refresh()
 
-    #robot.display(qInit)
-    #time.sleep(2.5)
+    robot.display(qInit)
 
     #PyIpopt stuff
     timeSteps = 3
@@ -182,7 +181,7 @@ if __name__ == "__main__":
     print "f(x*) =", obj
 
 
-    # q = q0
+    # q = q0.copy()
     # vq = zero(robot.nv)
     # t = 0
     # while (t < timeSteps):
